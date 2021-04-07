@@ -1,6 +1,6 @@
 // MyTasklist.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
-#include "StandardTasklist.h"
+#include "LocalTasklist.h"
 #include <iostream>
 
 
@@ -22,19 +22,17 @@ int main(int argc, char* argv[])
 
         // Standard tasklist
         if (argc == 1) {
-            StandardTasklist();
+            LocalTasklist("Standard");
         }
         // Verbose or services modes
         else if (argc == 2) {
             //Verbose mode
             if (strcmp(argv[1], "/V") == 0) {
-                std::cout << 1;
-                //LocalTasklistVerbose();
+                LocalTasklist("Verbose");
             }
             // Service Mode
             else if (strcmp(argv[1], "/SVC") == 0) {
-                std::cout << 2;
-                //LocalTasklistService();
+                LocalTasklist("SVC");
             }
             // Wrong input
             else {
@@ -50,7 +48,7 @@ int main(int argc, char* argv[])
     // Remote Mode
     else {
         if (argc == 2) {
-            std::wcout << "Need to specify Domain Name: /S Domain /U User /P Password"
+            std::wcout << "Need to specify Domain Name: /S Domain /U User /P Password" << std::endl;
         }
         else if (argc >= 3 && argc <=6){
             std::wcout << "Need User and Password: /U User /P Password" << std::endl;
@@ -58,7 +56,7 @@ int main(int argc, char* argv[])
         else if (argc == 7){
             if (strcmp(argv[1], "/S") == 0 && strcmp(argv[3], "/U") == 0 && strcmp(argv[5], "/P")==0) {
                 // Every parameter is OK and the code should be executed
-                RemoteTasklist();
+                //RemoteTasklist();
             }
             else {
                 std::wcout << "Need to specify Domain, User and Password: /S Domain /U User /P Password" << std::endl;
@@ -69,16 +67,18 @@ int main(int argc, char* argv[])
                 // Everything OK. All options selected.
                 if (strcmp(argv[7], "/V")==0) {
                     // Verbose Mode
-                    RemoteTasklistVerbose();
+                    //RemoteTasklistVerbose();
                 }
                 else{
                     //Service Mode
-                    RemoteTaskListService();
+                    //RemoteTaskListService();
                 }
             }
            
         }
     }
+
+    return 0;
         
 
 
