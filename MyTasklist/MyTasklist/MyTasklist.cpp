@@ -1,18 +1,19 @@
 // MyTasklist.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 #include "LocalTasklist.h"
+#include "RemoteTaskList.h"
 #include <iostream>
 
 
 
 
-int main(int argc, char* argv[])
+int wmain(int argc, wchar_t* argv[])
 {
     int local = 1;
     int i;
     // Si no esta /S   -  No remote
     for (i = 0; i < argc; i++) {
-        if (strcmp(argv[i], "/S") == 0) {
+        if (wcscmp(argv[i], L"/S") == 0) {
             local = 0;
         }
     }
@@ -27,11 +28,11 @@ int main(int argc, char* argv[])
         // Verbose or services modes
         else if (argc == 2) {
             //Verbose mode
-            if (strcmp(argv[1], "/V") == 0) {
+            if (wcscmp(argv[1], L"/V") == 0) {
                 LocalTasklist("Verbose");
             }
             // Service Mode
-            else if (strcmp(argv[1], "/SVC") == 0) {
+            else if (wcscmp(argv[1], L"/SVC") == 0) {
                 LocalTasklist("SVC");
             }
             // Wrong input
@@ -54,25 +55,28 @@ int main(int argc, char* argv[])
             std::wcout << "Need User and Password: /U User /P Password" << std::endl;
         }
         else if (argc == 7){
-            if (strcmp(argv[1], "/S") == 0 && strcmp(argv[3], "/U") == 0 && strcmp(argv[5], "/P")==0) {
+            if (wcscmp(argv[1], L"/S") == 0 && wcscmp(argv[3], L"/U") == 0 && wcscmp(argv[5], L"/P")==0) {
                 // Every parameter is OK and the code should be executed
-                //RemoteTasklist();
+                RemoteTaskList(*argv[2], argv[4], argv[6], "Standard");
             }
             else {
                 std::wcout << "Need to specify Domain, User and Password: /S Domain /U User /P Password" << std::endl;
             }
         }
         else if (argc == 8) {
-            if (strcmp(argv[1], "/S") == 0 && strcmp(argv[3], "/U") == 0 && strcmp(argv[5], "/P")==0 && (strcmp(argv[7], "/V")==0 || strcmp(argv[7], "/SVC")==0)) {
+            if (wcscmp(argv[1], L"/S") == 0 && wcscmp(argv[3], L"/U") == 0 && wcscmp(argv[5], L"/P")==0 && (wcscmp(argv[7], L"/V")==0 || wcscmp(argv[7], L"/SVC")==0)) {
                 // Everything OK. All options selected.
-                if (strcmp(argv[7], "/V")==0) {
+                if (wcscmp(argv[7], L"/V")==0) {
                     // Verbose Mode
-                    //RemoteTasklistVerbose();
+                    RemoteTaskList(*argv[2], argv[4], argv[6], "Verbose");
                 }
                 else{
                     //Service Mode
-                    //RemoteTaskListService();
+                    RemoteTaskList(*argv[2], argv[4], argv[6], "SVC");
                 }
+            }
+            else {
+                std::wcout << "Need to specify Domain, User, Password and Output Mode (Optional): /S Domain /U User /P Password [/V OR /SVC]" << std::endl;
             }
            
         }
