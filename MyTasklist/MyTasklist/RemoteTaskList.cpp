@@ -14,7 +14,7 @@ using namespace std;
 
 
 
-int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const char* mode) {
+int RemoteTaskList(wchar_t * domain, wchar_t * user, wchar_t * password, const char* mode) {
     HRESULT hres;
 
     // Step 1: --------------------------------------------------
@@ -77,7 +77,7 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
 
     IWbemServices* pSvc = NULL;
 
-    // Get the user name and password for the remote computer
+    // Get the user name and password for the remote computer from parameters
     bool useToken = false;
     bool useNTLM = true;
     wchar_t pszName[CREDUI_MAX_USERNAME_LENGTH + 1] = { 0 };
@@ -85,13 +85,14 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
     wchar_t pszPwd[CREDUI_MAX_PASSWORD_LENGTH + 1] = { 0 };
     wcscpy_s(pszPwd, password);
     wchar_t pszDomain[CREDUI_MAX_USERNAME_LENGTH + 1];
+    wcscpy_s(pszDomain, domain);
     wchar_t pszUserName[CREDUI_MAX_USERNAME_LENGTH + 1];
     wchar_t pszAuthority[CREDUI_MAX_USERNAME_LENGTH + 1];
     BOOL fSave;
     DWORD dwErr;
 
 
-    // change the computerName strings below to the full computer name
+    // Change the computerName strings below to the full computer name
     // of the remote computer
     if (!useNTLM)
     {
@@ -102,8 +103,19 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
     // and obtain pointer pSvc to make IWbemServices calls.
     //---------------------------------------------------------
 
+    // Parsing my Domain
+    std::wstring auxDomain = L"\\\\";
+    // Length for Domain
+    std::wstring auxLength = auxDomain.append(pszDomain);
+    auxDomain.append(L"\\root\\cimv2");
+    wchar_t* pszDomainAux = const_cast<wchar_t*>(auxDomain.c_str());
+    wchar_t pszDomain2[CREDUI_MAX_USERNAME_LENGTH + 1] = { 0 };
+    wcscpy_s(pszDomain2, pszDomainAux);
+
+    // Connection to the specified system
+
     hres = pLoc->ConnectServer(
-        _bstr_t(L"\\\\TASKEXAMPLE\\root\\cimv2"),
+        _bstr_t(useToken ? NULL : pszDomain2),
         _bstr_t(useToken ? NULL : pszName),    // User name
         _bstr_t(useToken ? NULL : pszPwd),     // User password
         NULL,                              // Locale             
@@ -123,7 +135,6 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
     }
 
     cout << "Connected to ROOT\\CIMV2 WMI namespace" << endl;
-
 
     // step 5: --------------------------------------------------
     // Create COAUTHIDENTITY that can be used for setting security on proxy
@@ -194,18 +205,21 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
 
     // Step 7: --------------------------------------------------
     // Use the IWbemServices pointer to make requests of WMI ----
-//Create context to call GetUser Function for Verbose Mode
-
-
+    //Create context to call GetUser Function for Verbose Mode
 
     BSTR ClassName = SysAllocString(L"Win32_Process");
-
 
     _bstr_t MethodName = (L"GetOwner");
 
     IWbemClassObject* pClass = NULL;
 
     hres = pSvc->GetObject(ClassName, 0, NULL, &pClass, NULL);
+
+    if (FAILED(hres))
+    {
+        cout << "Could not get the object. Error code = 0x"
+            << hex << hres << endl;
+    }
 
     IWbemClassObject* pOutMethod = NULL;
 
@@ -230,9 +244,8 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
     }
 
     // Use the IWbemServices pointer to make requests of WMI. 
-    // Make requests here:
 
-    // For example, query for all the running processes
+    // Query for all processes
     IEnumWbemClassObject* pEnumerator = NULL;
     hres = pSvc->ExecQuery(
         bstr_t("WQL"),
@@ -252,8 +265,9 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
         return 1;               // Program has failed.
     }
 
+    // Security Context for pEnumerator function call
     hres = CoSetProxyBlanket(
-        pEnumerator,                    // Indicates the proxy to set
+        pEnumerator,                           // Indicates the proxy to set
         RPC_C_AUTHN_DEFAULT,            // RPC_C_AUTHN_xxx
         RPC_C_AUTHZ_DEFAULT,            // RPC_C_AUTHZ_xxx
         COLE_DEFAULT_PRINCIPAL,         // Server principal name 
@@ -265,9 +279,8 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
 
     if (FAILED(hres))
     {
-        cout << "Could not set proxy blanket on enumerator. Error code = 0x"
+        cout << "Could not set proxy blanket. Error code = 0x"
             << hex << hres << endl;
-        pEnumerator->Release();
         pSvc->Release();
         pLoc->Release();
         CoUninitialize();
@@ -286,13 +299,14 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
             << std::setw(TAB) << "ID"
             << std::setw(TAB) << "Session Name"
             << std::setw(TAB) << "Session ID"
-            << std::setw(TAB) << "Mem Usage"
+            << std::setw(TAB) << "Mem Usage (MB)"
             << std::endl;
 
         std::cout
             << std::left << "-------------------------------------------------------------------------------------------------------------"
             << std::endl;
 
+        // Iterate processes
         while (pEnumerator)
         {
             hres = pEnumerator->Next(WBEM_INFINITE, 1,
@@ -309,12 +323,13 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
             VARIANT vtProp4;
             wchar_t* sessionName;
 
-
-            // Get the value of the Name property
+            // Get the value of the properties
             hres = pclsObj->Get(L"Name", 0, &vtProp, 0, 0);
             hres = pclsObj->Get(L"ProcessID", 0, &vtProp2, 0, 0);
             hres = pclsObj->Get(L"SessionId", 0, &vtProp3, 0, 0);
-            hres = pclsObj->Get(L"WorkingSetSize", 0, &vtProp4, 0, 0);
+            hres = pclsObj->Get(L"PageFileUsage", 0, &vtProp4, 0, 0);
+
+            // Setting sessionName according to SessionId
             if (vtProp3.uintVal == 0) {
                 sessionName = const_cast<wchar_t*>(L"Services");
             }
@@ -331,7 +346,7 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
                 << std::setw(TAB) << vtProp2.uintVal
                 << std::setw(TAB) << sessionName
                 << std::setw(TAB) << vtProp3.uintVal
-                << std::setw(TAB) << vtProp4.ulVal / 1024
+                << std::setw(TAB) << vtProp4.uintVal / 1024
                 << std::endl;
 
             VariantClear(&vtProp);
@@ -346,6 +361,7 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
     // Output mode /V
     else if (mode == "Verbose") {
 
+        // Layout
         int TAB = 20;
 
         std::cout
@@ -353,10 +369,10 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
             << std::setw(TAB) << "ID"
             << std::setw(TAB) << "Session Name"
             << std::setw(TAB*0.9) << "Session ID"
-            << std::setw(TAB*0.9) << "Mem Usage"
+            << std::setw(TAB*0.9) << "Mem Usage (MB)"
             << std::setw(TAB*0.9) << "Status"
             << std::setw(TAB*1.5) << "User Name"
-            << std::setw(TAB) << "CPU Time"
+            << std::setw(TAB) << "CPU Time (Min)"
             << std::setw(TAB) << "Window Title"
             << std::endl;
 
@@ -372,6 +388,7 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
 
             if (0 == uReturn)
             {
+                cout << "mal";
                 break;
             }
 
@@ -391,7 +408,7 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
             hres = pclsObj->Get(L"Name", 0, &vtProp, 0, 0);
             hres = pclsObj->Get(L"ProcessID", 0, &vtProp2, 0, 0);
             hres = pclsObj->Get(L"SessionId", 0, &vtProp3, 0, 0);
-            hres = pclsObj->Get(L"WorkingSetSize", 0, &vtProp4, 0, 0);
+            hres = pclsObj->Get(L"PageFileUsage", 0, &vtProp4, 0, 0);
             hres = pclsObj->Get(L"ExecutionState", 0, &vtProp5, 0, 0);
             hres = pclsObj->Get(L"UserModeTime", 0, &vtProp7, 0, 0);
             hres = pclsObj->Get(L"Description", 0, &vtProp8, 0, 0);
@@ -415,12 +432,18 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
             else {
                 sessionName = const_cast <wchar_t*>(L"Console");
             }
+            // Truncation of Names
             if (SysStringLen(vtProp.bstrVal) > 25) {
                 std::wstring a(vtProp.bstrVal, 25);
                 vtProp.bstrVal = SysAllocStringLen(a.data(), a.size());
             }
 
-            // Translating execution state from int to String.
+            if (SysStringLen(vtProp8.bstrVal) > 25) {
+                std::wstring a(vtProp8.bstrVal, 25);
+                vtProp8.bstrVal = SysAllocStringLen(a.data(), a.size());
+            }
+
+            // Translating execution state from int to String
 
             wchar_t* executionState;
             if (vtProp5.uintVal == 3) {
@@ -433,12 +456,14 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
             bool userFlag = FALSE;
             wstring domainUser;
 
+            // Executing the GetOwner Method
             hres = pSvc->ExecMethod(vtPath.bstrVal, MethodName, 0, NULL, NULL, &pOutMethod, NULL);
             if (FAILED(hres))
             {
                 userFlag = TRUE;
                 domainUser = L"N/A";
             }
+            // Formatting output of the previous method
             else {
                 BSTR Text;
                 hres = pOutMethod->GetObjectText(0, &Text);
@@ -474,11 +499,11 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
                 << std::setw(TAB) << vtProp2.uintVal
                 << std::setw(TAB) << sessionName
                 << std::setw(TAB*0.9) << vtProp3.uintVal
-                << std::setw(TAB*0.9) << vtProp4.ulVal / 1024
+                << std::setw(TAB*0.9) << vtProp4.uintVal / 1024
                 << std::setw(TAB*0.9) << executionState
                 << std::setw(TAB*1.5) << domainUser
                 << std::setw(TAB) << CPUUsage
-                << std::setw(TAB) << vtProp8.bstrVal
+                << std::setw(TAB) << "N/A"
                 << std::endl;
 
             VariantClear(&vtProp);
@@ -493,17 +518,19 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
 
     // Mode SVC
     else {
-
-        int TAB = 40;
+        // Layout for SVC Mode
+        int TAB = 30;
         std::cout
-            << std::left << std::setw(30) << "Name"
-            << std::setw(TAB) << "Services"
+            << std::left << std::setw(TAB) << "Name"
+            << std::setw(TAB*0.5) << "PID"
+            << std::setw(TAB*1.5) << "Services"
             << std::endl;
 
         std::cout
             << std::left << "-------------------------------------------------------------------------------------------------------------"
             << std::endl;
 
+        // Iterate through processes
         while (pEnumerator)
         {
             hres = pEnumerator->Next(WBEM_INFINITE, 1,
@@ -522,7 +549,7 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
             wchar_t* sessionName;
 
 
-            // Get the value of the Name property
+            // Get the value of the properties
             hres = pclsObj->Get(L"Name", 0, &vtProp, 0, 0);
             hres = pclsObj->Get(L"ProcessID", 0, &vtProp2, 0, 0);
 
@@ -532,17 +559,17 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
             std::wstring processId = std::to_wstring(vtProp2.uintVal);
             std::wstring query = L"SELECT * FROM Win32_Service WHERE ProcessId = " + processId;
 
-            // Idle Process, too many services.
+            // Idle Process, too many services. Skipped
             if (processId == L"0") {
                 std::wcout
                     << std::left << std::setw(TAB) << vtProp.bstrVal
-                    << std::setw(TAB) << vtProp2.uintVal
-                    << std::right
-                    << std::setw(TAB) << "N/A"
+                    << std::setw(TAB*0.5) << vtProp2.uintVal
+                    << std::setw(TAB*1.5) << "N/A"
                     << std::endl;
             }
             else {
                 int counter = 0;
+                // Create security context for new query
                 hres = CoSetProxyBlanket(
                     pSvc,                    // Indicates the proxy to set
                     RPC_C_AUTHN_DEFAULT,            // RPC_C_AUTHN_xxx
@@ -572,6 +599,7 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
                     NULL,
                     &serviceQuery);
 
+                // Create security context for posterior iteration
                 hres = CoSetProxyBlanket(
                     serviceQuery,                    // Indicates the proxy to set
                     RPC_C_AUTHN_DEFAULT,            // RPC_C_AUTHN_xxx
@@ -606,29 +634,21 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
                     hres = serviceQueryObject->Get(L"DisplayName", 0, &vtProp3, 0, 0);
                     std::wcout
                         << std::left << std::setw(TAB) << vtProp.bstrVal
-                        << std::setw(TAB) << vtProp2.uintVal
-                        << std::right
-                        << std::setw(TAB) << vtProp3.bstrVal
+                        << std::setw(TAB*0.5) << vtProp2.uintVal
+                        << std::setw(TAB*1.5) << vtProp3.bstrVal
                         << std::endl;
                     counter++;
-
                 }
-
+                // If there are not services associated with a PID
                 if (counter == 0) {
                     std::wcout
                         << std::left << std::setw(TAB) << vtProp.bstrVal
-                        << std::setw(TAB) << vtProp2.uintVal
-                        << std::right
-                        << std::setw(TAB) << "N/A"
+                        << std::setw(TAB*0.5) << vtProp2.uintVal
+                        << std::setw(TAB*1.5) << "N/A"
                         << std::endl;
                 }
             }
 
-
-            //std::wcout
-              //  << std::left << std::setw(TAB) << vtProp.bstrVal
-                //<< std::setw(TAB) << vtProp3.bstrVal
-                //<< std::endl;
 
             VariantClear(&vtProp);
             VariantClear(&vtProp2);
@@ -641,21 +661,12 @@ int RemoteTaskList(wchar_t domain, wchar_t * user, wchar_t * password, const cha
 
     }
 
-    // Step 8: -------------------------------------------------
-    // Secure the enumerator proxy
+    // Deleting credentials
 
-
-    // When you have finished using the credentials,
-    // erase them from memory.
     SecureZeroMemory(pszName, sizeof(pszName));
     SecureZeroMemory(pszPwd, sizeof(pszPwd));
     SecureZeroMemory(pszUserName, sizeof(pszUserName));
     SecureZeroMemory(pszDomain, sizeof(pszDomain));
-
-
-    // Step 9: -------------------------------------------------
-    // Get the data from the query in step 7 -------------------
-
 
 
     // Cleanup
